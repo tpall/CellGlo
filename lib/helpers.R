@@ -5,12 +5,17 @@ helper.function <- function()
 
 # function to load data from list and subtract baseline ----
 poolallstuff <- function(datalist){
+  
   # load data and in case we used also IVIS to quantitate we add extra ldply step
+  datalist <- lapply(datalist, data.frame)
   df <- ldply(datalist)
+  
   # remove baseline
-  df <- ddply(df, c("exp.id"), transform, value = value - mean(value[treatment == "media"]))
+  df <- ddply(df, c("exp.id"), transform, 
+              value = value - mean(value[treatment == "media"], na.rm = TRUE))
   df[!df$treatment=="media", ]
 }
+
 
 # good old detrend function
 detrend <- function(var, exp){resid(lm(var~factor(exp))) + mean(var, na.rm = TRUE)}
