@@ -71,8 +71,8 @@ qplot(x = exp.id, y = norm.value, data=df, geom = "boxplot", fill = GF) +
 
 grouping <- .(doses,treatment,Instrument,GF,doses_GF)
 summary <- ddply(df, grouping, summarise,
-                 Mean = mean(value),
-                 SD = sd(value),
+                 Mean = mean(value,na.rm=TRUE),
+                 SD = sd(value,na.rm=TRUE),
                  N = length(value),
                  SE = SD/sqrt(N))
 
@@ -90,84 +90,16 @@ ggsave(file=paste0("graphs/Snc_cellgrowth_exp_summary_raw_", Sys.Date(),".pdf"))
 
 head(df)
 
-# apply L2 filter to remove plate edge effect row-wise ----
-# df <- ddply(df, c("Instrument"), transform, 
-#                    filt.value = l2filter.sparse(value, 2))
-# 
-# df <- ddply(df, c("rowname", "Instrument"), transform, 
-#                    normvalue = value/mean(filt.value, na.rm=TRUE))
-# 
-# summary2 <- ddply(df, grouping, summarize,
-#                   Mean = mean(normvalue),
-#                   SD = sd(normvalue),
-#                   N = length(normvalue),
-#                   SE = SD/sqrt(N))
-# 
-# summary2$treatment2 <- with(summary2, paste0(GF, "-", doses_GF, "+\n", treatment))
-# 
-# esteetika <- aes(x = log10(doses), y = Mean, ymin = Mean - SE, ymax = Mean + SE, colour = treatment2)
-# p <- ggplot(summary2, esteetika)
-# p +  geom_point(size = 3, stat = "identity") + 
-#   geom_line(size = 1) +
-#   geom_errorbar(width=0.2) + 
-#   facet_grid(Instrument~GF, scales = "free") +
-#   ylab(expression(Mean %+-% SE)) +
-#   scale_colour_discrete(name = "Treatment")
-# ggsave(paste0("graphs/Sync_cellgrowth_norm", Sys.Date(),".pdf"))
+library(Hmisc)
+library(magrittr)
+library(plyr);library(dplyr)
+df$norm.value %<>% c # was matrix
+df %>% 
+  filter(Instrument=="Tecan") %>%
+  ggplot(aes(x=log10(doses),y=norm.value,color=treatment))+
+  stat_summary(fun.data="mean_sdl", mult=1) +
+  facet_grid(Instrument~GF,scales ="free")
 
-
-###############################
-# summary3 <- ddply(df, grouping, summarize,
-#                   Mean = mean(normvalue),
-#                   SD = sd(normvalue),
-#                   N = length(normvalue),
-#                   SE = SD/sqrt(N))
-# 
-# summary3$treatment2 <- with(summary3, paste0(GF, "-", doses_GF, "+\n", treatment))
-
-
-# plotstuff <- function(input, error){
-#   library(ggthemes)
-#   esteetika <- eval(parse(text = paste("aes(x = log10(doses), y = Mean, ymin = Mean -", 
-#                                        error,
-#                                        ", ymax = Mean +",
-#                                        error, 
-#                                        ", colour = treatment2)")))
-#   ggplot(input, esteetika) +
-#     geom_point(size = 3, stat = "identity") + 
-#     geom_line(size = 1) +
-#     geom_errorbar(width=0.2) + 
-#     ylab(parse(text=paste("Mean %+-%", error))) +
-#     facet_wrap(~Instrument, scales = "free") +
-#     scale_colour_colorblind(name = "Treatment")
-# }
-
-# plotlist <- dlply(summary3, "GF", function(x) plotstuff(x, error = "SD"))
-# names(plotlist)
-# g <- arrangeGrob(plotlist$bFGF,plotlist$VEGF,plotlist$"GDF-2",plotlist$HGF)
-# g
-# ggsave(file = paste0("graphs/Sync_cellgrowth_norm_breakup", Sys.Date(),".pdf"), g, width = 8)
-
-# plotlittlelesstuff <- function(input, error, instr){
-#   library(dplyr)
-#   library(ggthemes)
-#   esteetika <- eval(parse(text = paste("aes(x = log10(doses), y = Mean, ymin = Mean -", 
-#                                        error,
-#                                        ", ymax = Mean +",
-#                                        error, 
-#                                        ", colour = treatment2)")))
-#   ggplot(filter(input, Instrument == instr), esteetika) +
-#     geom_point(size = 3, stat = "identity") + 
-#     geom_line(size = 1) +
-#     geom_errorbar(width=0.2) + 
-#     ylab(parse(text=paste("Mean %+-%", error))) +
-#     scale_colour_colorblind(name = "Treatment")
-# }
-
-# plotlist <- dlply(summary3, "GF", function(x) plotlittlelesstuff(x, error = "SD"))
-# g <- arrangeGrob(plotlist$bFGF,plotlist$VEGF,plotlist$"GDF-2",plotlist$HGF)
-# ggsave(file = paste0("graphs/Sync_cellgrowth_norm_breakup_Tecan_", Sys.Date(),".pdf"), g, width = 8)
-# g
 
 # NB! uses de-trended data and introduces noise!
 summary4 <- ddply(df, grouping, summarize,
