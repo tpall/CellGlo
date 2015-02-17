@@ -40,6 +40,7 @@ df <- df %>% filter(!treatment=="media")
 
 # boxplots from each experiment -- are readouts similar  ----
 library(ggplot2)
+# intensities in response to different growth factor stimulation in ivis and tecan data
 qplot(x = Instrument, y = value, data=df, geom = "boxplot", fill = GF) + 
   facet_wrap(~Instrument, scales = "free")
 
@@ -51,26 +52,24 @@ qplot(x = rowname, y = value, data=df, geom = "boxplot", fill = GF) +
 
 
 # remove between experiment batch differences ----
-## Not a good choice actually!!!
-df <- ddply(df, c("Instrument", "GF"), transform, value_ds = detrend(value, exp.id))
+# ## Not a good choice actually!!!
+# df <- ddply(df, c("Instrument", "GF"), transform, value_ds = detrend(value, exp.id))
 
 # scale/normalise data ----
-df <- ddply(df, c("exp.id", "GF"), mutate, 
-            norm.value = scale(value),
-            norm.value_ds = scale(value_ds))
+df <- ddply(df,.(exp.id,GF),mutate,norm.value=scale(value))
 
-boxplot(cbind(df$norm.value_ds, df$norm.value))
+# boxplot(cbind(df$norm.value_ds, df$norm.value))
 
 qplot(x = exp.id, y = value, data=df, geom = "boxplot", fill = GF) + 
   facet_wrap(~Instrument, scales = "free")
 qplot(x = exp.id, y = norm.value, data=df, geom = "boxplot", fill = GF) + 
   facet_wrap(~Instrument, scales = "free")
-qplot(x = exp.id, y = value_ds, data=df, geom = "boxplot", fill = GF) + 
-  facet_wrap(~Instrument, scales = "free")
-qplot(x = exp.id, y = norm.value_ds, data=df, geom = "boxplot", fill = GF) + 
-  facet_wrap(~Instrument, scales = "free")
+# qplot(x = exp.id, y = value_ds, data=df, geom = "boxplot", fill = GF) + 
+#   facet_wrap(~Instrument, scales = "free")
+# qplot(x = exp.id, y = norm.value_ds, data=df, geom = "boxplot", fill = GF) + 
+#   facet_wrap(~Instrument, scales = "free")
 
-grouping <- c("doses", "treatment", "Instrument" , "GF", "doses_GF")
+grouping <- .(doses,treatment,Instrument,GF,doses_GF)
 summary <- ddply(df, grouping, summarise,
                  Mean = mean(value),
                  SD = sd(value),
