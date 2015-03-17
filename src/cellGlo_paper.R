@@ -2,27 +2,32 @@ library('ProjectTemplate')
 rm(list=ls())
 load.project()
 
-# query list object colnames for GF to find out "Sync" experiments
+# query list object col numbers to find "Sync" experiments;snc=12,async=10,sirna=9
 snc <- datalist %>% 
-  lapply(., function(x) lapply(x, function(y) sum("GF" %in% names(y)))) %>%
-  lapply(., function(z) sum(unlist(z))) %>% { snc <- unlist(.) %>% is_greater_than(0)
-                                              datalist.orig[snc]} 
-snc <- snc[!names(snc)%in%c("141008","141022")] # remove siRNA experiments 
+  lapply({.%>%names%>%length}) %>% 
+  unlist %>% 
+  equals(12) %>% 
+  datalist[.] %>%
+  bind_rows
 
-# Extract Tecan data
-tec <- snc %>% lapply("[[",1)
-tec %>% lapply(summary)
+tec <- snc %>%
+  filter(!grepl("IVIS",exp.id))
 
-tec %>% lapply({.%>%mutate(value=scale(value,center = FALSE)%>%c)%>%
-                  filter(treatment=="media")})
+tec %>% 
+  group_by(date,plate) %>%
+  mutate(value=scale(value,center = FALSE)%>%c)%>%
+  filter(treatment=="media") %>%
+  summarise(Mean=mean(value),
+            SD=sd(value),
+            Median=median(value),
+            Max=max(value))
 
-
-filter(df, is.na(doses))
+tec %>%
+  group_by(date,plate) %>%
+  mutate(value = value - mean(value[treatment == "media"], na.rm = TRUE)) %>%
+  mutate(value = scale(value,center = FALSE)) %>%
+  filter(!treatment=="media") %>%
+  qplot(x=factor(date),y=value,geom="boxplot",data=.,fill=factor(plate))
 
 # log transform values
 df$doses <- (df$doses + 0.1)/1e9
-df$Instrument <-  "Tecan"
-df$Instrument[grep("IVIS", df$exp.id)] <- "IVIS"  
-# # add row and column names ----
-df$rowname <- sub("([A-P]{1})([0-9]*)","\\1", df$well)
-df$colname <- sub("([A-P]{1})([0-9]*)","\\2", df$well)
