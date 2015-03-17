@@ -38,51 +38,18 @@ platemeltdown2 <- function(experiment){
   mapply(function(x, y) {data.frame(x, exp.id = as.factor(y))}, realdata, names(realdata), SIMPLIFY = FALSE)
   }
 
-###########################
-# function to read data into dataframe and add metadata, produces datalist ----
-# experiment <- experiments[6]
-# platemeltdown <- function(experiment){
-#   require(plyr)
-#   # read file list
-#   datafile <- regmatches(list.files(file.path("data")),
-#                          regexpr(paste0("CellGlo_", experiment,
-#                                         ".csv"), list.files(file.path("data"))))
-#   
-#   z <- read.csv(file.path("data", datafile), header=FALSE)
-#   colnames(z) <- seq(ncol(z))
-#   rownames(z) <- paste(LETTERS[1:nrow(z)])
-#   # wells <- c(outer(LETTERS[1:nrow(z)], seq(ncol(z)), FUN=paste , sep=""))
-#   z$rowname <- rownames(z)
-#   z <- melt(z, id.vars = "rowname", variable_name = "colname")
-#   z$well <- paste0(z$rowname, z$colname)
-#   
-#   # metadata magic
-#   metadatafiles <- regmatches(list.files(file.path("data")), regexpr(
-#     paste0("CellGlo_", experiment,
-#            "_[Mm]etadata_([[:alpha:]]+)_*([[:alpha:]]*).csv"), list.files(file.path("data"))))
-#   
-#   extractmetadatanames <- function(x) {
-#     m <- regexec("_[Mm]etadata_([[:alpha:]]+)_*([[:alpha:]]*)",x)
-#     parts <- do.call(rbind,
-#                      lapply(regmatches(x, m), `[`, c(2L,3L)))
-#     parts <- apply(parts, 1, paste, collapse = ".")
-#     parts <- gsub("\\.$","",parts)
-#     parts <- c(na.omit(parts))
-#     parts}
-#   
-#   metadatanames <- extractmetadatanames(metadatafiles)
-#   
-#   extractmetadata <- function(x, wells){
-#     md <- read.csv(x, header=FALSE) # metadata files don't have header, just matrix 
-#     metadata <- data.frame(well = wells, value = c(as.matrix(md))[1:length(wells)])
-#     metadata}
-#   
-#   # merge data and metadata
-#   m <- lapply(file.path("data", metadatafiles), extractmetadata, wells = z$well)
-#   m <- join_all(m, "well") # plyr function
-#   colnames(m) <- c("well", metadatanames)
-#   z <- join(m, z)
-#   z$exp.id <- as.factor(experiment)
-# 
-# z}
-# experiment <- experiments[6]
+### New munge functions ####
+library(magrittr)
+library(plyr);library(dplyr)
+Pathfun <- . %>% 
+  regexpr(.,list.files(file.path("data"))) %>%
+  regmatches(list.files(file.path("data")),.)
+
+Mungefun <- . %>%
+  sapply({.%>%file.path("data",.)%>%
+            read.csv(header=FALSE)%>%
+            as.matrix%>%t%>%c})%>%{
+              di <- dim(.) %>% "["(1)
+              if(di==384) id <- expand.grid(col=c(1:24),row=LETTERS[1:16],plate=seq(1))
+              if(di%in%c(96,192)) id <- expand.grid(col=c(1:12),row=LETTERS[1:8],plate=seq(di/96))
+              data.frame(id,.)}

@@ -1,7 +1,7 @@
 library('ProjectTemplate')
 rm(list=ls())
 load.project()
-library(magrittr)
+# library(magrittr)
 # query list object colnames for GF to find out "Sync" experiments
 snc <- datalist.orig %>% lapply(., function(x) lapply(x, function(y) sum("GF" %in% names(y)))) %>%
   lapply(., function(z) sum(unlist(z)))
@@ -85,7 +85,8 @@ p +  geom_point(size = 3, stat = "identity") +
      geom_errorbar(width=0.2) + 
      facet_grid(Instrument~GF, scales = "free") +
      ylab(expression(Mean %+-% SE)) +
-     scale_colour_discrete(name = "Treatment")
+     scale_colour_discrete(name = "Treatment") +
+     guides(color=guide_legend(ncol=4))
 ggsave(file=paste0("graphs/Snc_cellgrowth_exp_summary_raw_", Sys.Date(),".pdf"))
 
 head(df)
@@ -94,10 +95,11 @@ library(Hmisc)
 library(magrittr)
 library(plyr);library(dplyr)
 df$norm.value %<>% c # was matrix
+
 df %>% 
   filter(Instrument=="Tecan") %>%
   ggplot(aes(x=log10(doses),y=norm.value,color=treatment))+
-  stat_summary(fun.data="mean_sdl", mult=1) +
+  stat_summary(fun.data="mean_sdl", mult=1,geom="smooth") +
   facet_grid(Instrument~GF,scales ="free")
 
 
