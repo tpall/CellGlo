@@ -41,13 +41,14 @@ platemeltdown2 <- function(experiment){
 ### New munge functions ####
 library(magrittr)
 library(plyr);library(dplyr)
+
 Pathfun <- . %>% 
   regexpr(.,list.files(file.path("data"))) %>%
   regmatches(list.files(file.path("data")),.)
 
 Mungefun <- . %>%
   sapply({.%>%file.path("data",.)%>%
-            read.csv(header=FALSE)%>%
+            read.table(header=FALSE, sep = ",")%>%
             as.matrix%>%t%>%c})%>%{
               di <- dim(.) %>% "["(1)
               if(di==384) id <- expand.grid(col=c(1:24),row=LETTERS[1:16],plate=seq(1))
