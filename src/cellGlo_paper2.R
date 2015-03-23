@@ -22,7 +22,7 @@ snc %<>% mutate(doses = (doses+0.1)/1e9)
 
 # lets use only Tecan measurements ----
 tec <- snc %>% filter(!grepl("IVIS",exp.id))
-ivi <- snc %>% filter(grepl("IVIS",exp.id))
+# ivi <- snc %>% filter(grepl("IVIS",exp.id))
 
 # add variables content for normalisation and treat2
 tec %<>%
@@ -31,68 +31,44 @@ tec %<>%
          content = ifelse(treatment=="media","blank",content),
          treat2 = paste(doses_GF,GF,treatment))
 
-# befor norm
+# Before normalisation
 tec %>% 
   group_by(date,plate) %>% 
-  mutate(value=scale(value)) %>%
+#   mutate(value=scale(value)) %>%
   ggplot(aes(x=factor(row),y=value,shape=factor(GF),color=treatment))+
   geom_point(position = position_dodge(0.5)) +
   facet_wrap(~date,scale="free_y") +
   scale_color_colorblind()
 
-# We have strong row effect in 140610 experiment
-# Lets try to get rid of row effect by median polish
-med <- tec %>%
+# Run medpolish to remove row effect and insert back corrected data ----
+tec$value[tec$date=="140610"] <- tec %>%
   filter(!treatment=="media"&date == "140610") %>%
   with(tapply(value,list(row,col),function(x) x)) %>%
-  medpolish(na.rm = TRUE)
+  medpolish(na.rm = TRUE) %>%
+  with((overall + outer(rep(1,8),col, "+") + residuals)) %>% t %>% c 
 
-# Plot results of median polish
-(med$overall + outer(rep(1,8),med$col, "+") + med$residuals) %>% 
-  melt %>% 
-  set_colnames(c("row","col","value")) %>%
-  ggplot(aes(x=factor(row),y=value)) +
-  geom_point() 
-
-# Insert back corrected data ----
-tec$value[tec$date=="140610"] <- (med$overall+outer(rep(1,8),med$col,"+")+med$residuals)%>%t%>%c 
-
-# after norm
-tec %>%
-  filter(!treatment=="media") %>%
-  group_by(date,plate,GF) %>% 
-  mutate(value=scale(value)) %>% 
-  dlply(.(GF)) %>%
-  lapply({.%>%{
-    ggplot(.,aes(x=log10(doses),y=value,color=treat2)) +
-      stat_summary(fun.data = mean_se, geom = "pointrange") +
-      stat_summary(fun.y = mean, geom = "line")+
-      scale_color_colorblind()}})
-  
-# HGF data 
-tec %>%
-  filter(!treatment=="media"&GF=="HGF") %>%
-  group_by(date,plate,GF) %>% 
-  mutate(value=scale(value)) %>% 
-  ggplot(.,aes(x=log10(doses),y=value,color=treat2)) +
-  stat_summary(fun.data = mean_se, geom = "pointrange") +
-  stat_summary(fun.y = mean, geom = "line")+
-#   facet_wrap(~date) +
-  scale_color_colorblind()
-
-tec %>%
-  filter(!treatment=="media"&GF=="HGF") %>%
-  group_by(date,plate,GF) %>% 
-  mutate(value=scale(value)) %>% 
-  ggplot(.,aes(x=row,y=value,color=treat2)) +
-  stat_summary(fun.data = mean_se, geom = "pointrange") +
-  stat_summary(fun.y = mean, geom = "line")+
-  facet_wrap(~date) +
-  scale_color_colorblind()
-
-
+# # after norm
+# tec %>%
+#   filter(!treatment=="media") %>%
+#   group_by(date,plate,GF) %>% 
+#   mutate(value=scale(value)) %>% 
+#   dlply(.(GF)) %>%
+#   lapply({.%>%{
+#     ggplot(.,aes(x=log10(doses),y=value,color=treat2)) +
+#       stat_summary(fun.data = mean_se, geom = "pointrange") +
+#       stat_summary(fun.y = mean, geom = "line")+
+#       scale_color_colorblind()}})
 # 
-# HGF data 
+# tec %>%
+#   filter(!treatment=="media") %>%
+#   group_by(date,plate,GF) %>% 
+#   mutate(value=scale(value)) %>% 
+#   ggplot(aes(x=log10(doses),y=value,color=treat2)) +
+#   stat_summary(fun.data = mean_se, geom = "pointrange") +
+#   stat_summary(fun.y = mean, geom = "line") +
+#   facet_grid(~GF)
+
+# Adjust edge effect in HGF data 
 Predfun <- function(x) x$col[2:3]%>%
   data.frame(col=c(2,3),eff=.)%>%
   lm(eff~col,data=.)%>%
@@ -111,26 +87,66 @@ med <- tec %>%
     out <- Predfun(.)
     Medfun(.,out)
   }}) %>%
-  lapply(function(x) (x$overall+outer(x$row,x$col,"+")+x$residuals)%>%t%>%c)
+  lapply({.%>%with(overall+outer(row,col,"+")+residuals)%>%t%>%c})
 
 # Insert back corrected data ----
 tec$value[tec$date=="140705"&tec$GF=="HGF"] <- med[[1]] 
 tec$value[tec$date=="140903"&tec$GF=="HGF"] <- med[[2]] 
 tec$value[tec$date=="140917"&tec$GF=="HGF"] <- med[[3]] 
 
-# p <- tec %>% 
-#   filter(!treatment=="media") %>%
-#   group_by(date,plate) %>% 
-#   mutate(value=value/median(value[content=="sample"])) %>% # apply median filter
-#   mutate(value=(value-mean(value[content=="sample"]))/sd(value[content=="sample"])) %>% # standardize
-#   group_by(date,plate,GF,doses,treatment,treat2,content) %>%
-#   summarise(value=sqrt(sum(value^2)/length(value))) %>% # RMS mean
-#   filter(content=="sample") %>%
-#   dlply(.(GF)) %>%
-#   lapply({.%>%{
-#     ggplot(.,aes(x=log10(doses),y=value,color=treat2)) +
-#       stat_summary(fun.data = mean_se, geom = "pointrange") +
-#       stat_summary(fun.y = mean, geom = "line") +
-#       scale_color_colorblind()}})
-# 
-# grid.arrange(p[[1]],p[[2]],p[[3]],p[[4]],ncol=2)
+med <- ivi %>%
+  filter(!treatment=="media"&GF=="HGF") %>%
+  group_by(date,plate) %>%
+  dlply(.(date)) %>%
+  lapply({.%>%with(tapply(value,list(row,col),function(x) x)) %>% medpolish(na.rm = TRUE)}) %>% 
+  lapply({.%>%{
+    out <- Predfun(.)
+    Medfun(.,out)
+  }}) %>%
+  lapply({.%>%with(overall+outer(row,col,"+")+residuals)%>%t%>%c})
+
+# Insert back corrected data ----
+ivi$value[ivi$date=="140705"&ivi$GF=="HGF"] <- med[[1]] 
+ivi$value[ivi$date=="140903"&ivi$GF=="HGF"] <- med[[2]] 
+ivi$value[ivi$date=="140917"&ivi$GF=="HGF"] <- med[[3]] 
+
+# Plot summary results
+# Original plot
+tec %>%
+  filter(!treatment=="media") %>%
+  group_by(date,plate,GF) %>% 
+  mutate(value=scale(value)) %>% 
+  ggplot(aes(x=log10(doses),y=value,color=treatment,shape=factor(doses_GF))) +
+  stat_summary(fun.data = mean_se, geom = "pointrange") +
+  stat_summary(fun.y = mean, geom = "line")+
+  facet_wrap(~GF,scale="free_y")+
+  scale_color_colorblind() 
+
+Plotfun <- .%>% {
+  ggplot(.,aes(x=log10(doses),y=value,color=treatment)) +
+    stat_summary(fun.data = mean_se, geom = "pointrange") +
+        stat_summary(fun.y = mean, geom = "line",size=1)+
+    scale_color_colorblind()}
+
+ntec <- tec %>%
+  filter(!treatment=="media"&treatment%in%c("3MUT-Fc","rhIgG-Fc")) %>%
+  group_by(date,plate) %>% 
+  mutate(value=scale(value)) %>%
+  group_by(date,plate,GF,doses,doses_GF,treatment,treat2) %>% 
+  summarise(value=mean(value))
+
+ntec %>% 
+  dlply(.(GF),Plotfun) %>%
+  do.call(grid.arrange,.)
+
+ntec2 <- tec %>%
+  filter(!treatment=="media") %>%
+  group_by(date,plate,GF) %>% 
+  mutate(value=(value-mean(value[content=="neg"]))/(mean(value[content=="pos"])-mean(value[content=="neg"]))) %>%
+  group_by(date,plate,GF,doses,doses_GF,treatment,treat2) %>% 
+  summarise(value=mean(value))
+
+ntec2 %>% 
+  filter(treatment%in%c("3MUT-Fc","rhIgG-Fc")) %>%
+  dlply(.(GF),Plotfun) %>%
+  do.call(grid.arrange,.)
