@@ -51,7 +51,7 @@ snc %<>% mutate(doses = (doses+0.1)/1e9)
 
 # lets use only Tecan measurements ----
 tec <- snc %>% filter(!grepl("IVIS",exp.id))
-# ivi <- snc %>% filter(grepl("IVIS",exp.id))
+ivi <- snc %>% filter(grepl("IVIS",exp.id))
 
 # add variables content for normalisation and treat2
 tec %<>%
