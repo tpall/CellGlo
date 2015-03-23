@@ -32,3 +32,30 @@ datalist <- "[0-9]{6,8}" %>%
       }})
     mapply(inner_join,md,d)
   }
+
+# query list object col numbers to find "Sync" experiments;snc=12,async=10,sirna=9 ----
+snc <- datalist %>% 
+  lapply({.%>%names%>%length}) %>% 
+  unlist %>% 
+  equals(12) %>% 
+  datalist[.] %>%
+  bind_rows
+
+snc %<>% mutate(doses = doses%>%as.numeric,
+                doses_GF = doses_GF%>%as.numeric,
+                GF = GF%>%as.factor,
+                date = date%>%as.factor)
+
+# log transform treatment doses ----
+snc %<>% mutate(doses = (doses+0.1)/1e9)
+
+# lets use only Tecan measurements ----
+tec <- snc %>% filter(!grepl("IVIS",exp.id))
+# ivi <- snc %>% filter(grepl("IVIS",exp.id))
+
+# add variables content for normalisation and treat2
+tec %<>%
+  mutate(content = ifelse(treatment=="UT","pos","sample"),
+         content = ifelse(doses_GF==0,"neg",content),
+         content = ifelse(treatment=="media","blank",content),
+         treat2 = paste(doses_GF,GF,treatment))
