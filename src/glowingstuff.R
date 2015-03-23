@@ -3,7 +3,7 @@ load.project()
 
 mitmes <- 1
 # load data
-df <- datalist.orig[[mitmes]]
+df <- datalist.orig[[mitmes]][[1]]
 exp.date <- names(datalist.orig)[mitmes]
 # remove baseline
 baseline <- df[df$treatment=="media",]
