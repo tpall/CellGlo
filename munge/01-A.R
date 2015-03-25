@@ -58,4 +58,5 @@ tec %<>%
   mutate(content = ifelse(treatment=="UT","pos","sample"),
          content = ifelse(doses_GF==0,"neg",content),
          content = ifelse(treatment=="media","blank",content),
+         content = ifelse(treatment=="FUM","xFUM",content),
          treat2 = paste(doses_GF,GF,treatment))
