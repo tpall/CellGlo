@@ -2,6 +2,35 @@ library('ProjectTemplate')
 rm(list=ls())
 load.project()
 
+# Local munge
+# query list object col numbers to find "Sync" experiments;snc=12,async=10,sirna=9 ----
+snc <- datalist %>% 
+  lapply({.%>%names%>%length}) %>% 
+  unlist %>% 
+  equals(12) %>% 
+  datalist[.] %>%
+  bind_rows
+
+snc %<>% mutate(doses = doses%>%as.numeric,
+                doses_GF = doses_GF%>%as.numeric,
+                GF = GF%>%as.factor,
+                date = date%>%as.factor)
+
+# log transform treatment doses ----
+snc %<>% mutate(doses = (doses+0.1)/1e9)
+
+# lets use only Tecan measurements ----
+tec <- snc %>% filter(!grepl("IVIS",exp.id))
+# ivi <- snc %>% filter(grepl("IVIS",exp.id))
+
+# add variables content for normalisation and treat2
+tec %<>%
+  mutate(content = ifelse(treatment=="UT","pos","sample"),
+         content = ifelse(doses_GF==0,"neg",content),
+         content = ifelse(treatment=="media","blank",content),
+         content = ifelse(treatment=="FUM","xFUM",content),
+         treat2 = paste(doses_GF,GF,treatment))
+
 # Two objectives:
 #1. lets try to normalise 3MUT-treated data against control treatment
 #2. create plate mask of ege and region effects
@@ -38,15 +67,18 @@ library(scales)
 Plotfun <- .%>% {
   GF <- select(.,GF) %>% "["(1,1) %>% as.character %>% ifelse(.=="bFGF","FGF2",.) %>% as.character
   p <- ggplot(.,aes(x=factor(content),y=value)) +
-  stat_summary(fun.data = mean_se, geom = "errorbar", width=0.25) +
-  stat_summary(fun.y = mean, geom = "point",size=3) +
-  scale_x_discrete(breaks=c("neg","pos","xFUM"),
-                   labels=c("unind.", "ind.", "ind.+\n20 nM FUM")) +
-  xlab(" ") +
-  ylab("Relative cell number") +
-  expand_limits(y = 0) 
-# p <- p + ggtitle(paste(GF))
-p}
+    stat_summary(fun.data = mean_se, geom = "errorbar", width=0.25) +
+    stat_summary(fun.y = mean, geom = "bar") +
+    scale_x_discrete(breaks=c("neg","pos","xFUM"),
+                     labels=c("Unind.", GF, paste(GF,"+\nFUM"))) +
+    xlab(NULL) +
+    ylab("Relative cell number") +
+    theme_classic() +
+    theme(axis.text.x=element_text(angle = 90)) +
+    scale_y_continuous(expand = c(0, 0)) +
+    expand_limits(y = 0) 
+  # p <- p + ggtitle(paste(GF))
+  p}
 
 stimp <- tec %>%
   filter(!treatment=="media") %>%
@@ -60,13 +92,17 @@ stimp <- tec %>%
 
 # Inhibition plots
 Moreplotfun <- .%>% {
-  GF <- select(.,GF) %>% "["(1,1) %>% as.character %>% ifelse(.=="bFGF","FGF2",.) %>% as.character
+#   GF <- select(.,GF) %>% "["(1,1) %>% as.character %>% ifelse(.=="bFGF","FGF2",.) %>% as.character
   p <- ggplot(.,aes(x=log10(doses),y=value,shape=treatment)) +
     stat_summary(fun.data = mean_se, geom = "errorbar", width=0.075) +
     stat_summary(fun.y = mean, geom = "point",size=3) +
+    stat_summary(fun.y = mean, geom = "line") +
     ylab(NULL) +
-    expand_limits(y = 0) +
-    theme(legend.position="none") 
+    xlab(bquote(list(Conc.,log[10](M)))) +
+    scale_y_continuous(expand = c(0, 0)) +
+    expand_limits(y = 0)+
+    theme_classic() +
+    theme(legend.position="none")
   # p <- p + ggtitle(paste(GF))
   p}
 
@@ -82,16 +118,19 @@ inhpimp <- tec %>%
   lapply({.%>%Moreplotfun})
 
 limp <- mapply(list,stimp,inhpimp)
-do.call(grid.arrange, c(limp, list(ncol=4)))
+labs <- c("VEGF","GDF-2","HGF","FGF2") %>% lapply(textGrob)
+
+fig <- do.call(arrangeGrob, c(limp, list(ncol=4,widths=c(2,3))))
+fig
 
 # lets fit some models
-tec %>%
-  filter(!treatment=="media") %>% # empty wells
-  filter(doses<1.50001e-05) %>%
-  group_by(date,plate,GF) %>% 
-  mutate(value=(value-min(value))/(range(value)%>%diff)) %>%
-  ggplot(aes(x=log10(doses),y=value,color=treatment,shape=factor(doses_GF))) +
-  stat_summary(fun.data = mean_se, geom = "pointrange") +
-  stat_summary(fun.y = mean, geom = "line")+
-  facet_wrap(~GF)+
-  scale_color_colorblind()
+# tec %>%
+#   filter(!treatment=="media") %>% # empty wells
+#   filter(doses<1.50001e-05) %>%
+#   group_by(date,plate,GF) %>% 
+#   mutate(value=(value-min(value))/(range(value)%>%diff)) %>%
+#   ggplot(aes(x=log10(doses),y=value,color=treatment,shape=factor(doses_GF))) +
+#   stat_summary(fun.data = mean_se, geom = "pointrange") +
+#   stat_summary(fun.y = mean, geom = "line")+
+#   facet_wrap(~GF)+
+#   scale_color_colorblind()
