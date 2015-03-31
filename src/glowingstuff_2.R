@@ -6,12 +6,13 @@ asnc <- lapply(lapply(datalist.orig, function(x) lapply(x, function(y) sum(!"GF"
 datalist.asnc <- datalist.orig[asnc > 0]
 
 # load data from list and subtract baseline using helper "poolallstuff" ----
-df <- ldply(datalist.asnc, poolallstuff)
+df <- ldply(datalist.asnc, rbind_all)
+df %<>% filter(!grepl("IVIS",exp.id))
 
 # log transform values
 df$doses <- (df$doses+0.1)/1e9
-df$Instrument <-  "Tecan"
-df$Instrument[grep("IVIS", df$exp.id)] <- "IVIS"  
+# df$Instrument <-  "Tecan"
+# df$Instrument[grep("IVIS", df$exp.id)] <- "IVIS"  
 # # add row and column names ----
 df$rowname <- sub("([A-P]{1})([0-9]*)","\\1", df$well)
 df$colname <- sub("([A-P]{1})([0-9]*)","\\2", df$well)
@@ -20,50 +21,65 @@ df$colname <- sub("([A-P]{1})([0-9]*)","\\2", df$well)
 # qplot(x = factor(time), y = value, data = df[df$exp.id=="140509_IVIS",], 
 # geom = "boxplot")
 # lets remove 24 and 48 hour data from this experiment
-df <- df[!(df$exp.id == "140509_IVIS" & df$time %in% c("24", "48")), ]
+# df <- df[!(df$exp.id == "140509_IVIS" & df$time %in% c("24", "48")), ]
+df %<>% filter(time==72)
 
 # boxplots from each experiment -- are readouts similar  ----
-qplot(x = factor(exp.id), y = value, data=df, geom = "boxplot") + 
-  facet_grid(Instrument~time, scales = "free_y")
+qplot(x = factor(exp.id), y = value, data=df, geom = "boxplot") 
 
 # lets work on with 72 hour datapoint ----
-threedays <- df[df$time==72,]
+threedays <- df #[df$time==72,]
 
 # ok, let's check if different experiments values differ
-fits <- dlply(threedays, c("Instrument"), 
-              function(x) lm(value~factor(exp.id), data = x))
-lapply(fits, anova)
+# fits <- dlply(threedays, c("Instrument"), 
+#               function(x) lm(value~factor(exp.id), data = x))
+# lapply(fits, anova)
+df %>% 
+  lm(value~factor(exp.id), data = .) %>%
+  anova
 
 # plot data at 72 hour timepoint
-qplot(x = factor(exp.id), y = value, data=threedays, geom = "boxplot") + 
-  facet_grid(Instrument~time, scales = "free_y")
+# qplot(x = factor(exp.id), y = value, data=threedays, geom = "boxplot") + 
+#   facet_grid(Instrument~time, scales = "free_y")
 
 # lets detrend data then -----
-threedays <- ddply(threedays, "Instrument", 
-                   transform, value_db = detrend(value, exp.id))
+# threedays <- ddply(threedays, "Instrument", 
+#                    transform, value_db = detrend(value, exp.id))
 
-# was detrending effective
-fits <- dlply(threedays, c("Instrument"), 
-              function(x) lm(value_db ~ factor(exp.id), data = x))
-lapply(fits, anova) # yep seems so ...
-qplot(x = factor(exp.id), y = value_db, data=threedays, geom = "boxplot") + 
-  facet_grid(Instrument~time, scales = "free_y")
-# 
+df %>%
+  group_by(exp.id) %>%
+  mutate(value=scale(value)%>%c) %>%
+  qplot(x = factor(exp.id), y = value, data=., geom = "boxplot") %>% 
+  lm(value~factor(exp.id), data = .) %>%
+  anova
 
-summary <- ddply(threedays, c("doses", "treatment", "Instrument" , "celldensity"), 
-                 summarize,
-                 Mean = mean(value_db),
-                 SD = sd(value_db),
-                 N = length(value_db),
+df %>%
+  group_by(exp.id) %>%
+  mutate(value=scale(value)%>%c) %>%
+  mutate(value=(value-min(value))/(range(value)%>%diff)) %>%
+    ggplot(aes(x=log10(doses),y=value,shape=treatment)) +
+    stat_summary(fun.data = mean_se, geom = "pointrange") +
+    stat_summary(fun.y = mean, geom = c("line","point"))
+
+
+Mysummary <- threedays %>%
+  group_by(exp.id) %>%
+  mutate(value=scale(value)%>%c) %>%
+  ddply(., c("doses", "treatment", "celldensity"), 
+                 summarise,
+                 Mean = mean(value),
+                 SD = sd(value),
+                 N = length(value),
                  SE = SD/sqrt(N))
 
-q <- ggplot(summary, aes(x = log10(doses), y = Mean), colour = treatment) +
-  geom_point(size = 3) + facet_grid(Instrument~celldensity, scales = "free_y") + 
+q <- ggplot(Mysummary%>%filter(celldensity==1600), aes(x = log10(doses), y = Mean, shape = treatment)) +
+  geom_point(size = 3) + facet_grid(~celldensity, scales = "free_y") + 
   geom_line(size = 1) +
   geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width=0.2) + 
   ylab(expression(Mean %+-% SE))
 ggsave(file=paste0("graphs/Asnc_cellgrowth_exp_summary_raw_", Sys.Date(),".pdf"), q)
 # 
+
 p <- ggplot(threedays, aes(x = factor(signif(doses, 2)), y = value_db, fill = treatment)) +
   geom_boxplot() + facet_wrap(~Instrument, scales = "free_y") + 
   theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5))
@@ -77,7 +93,7 @@ ggsave(file=paste0("graphs/Asnc_cellgrowth_exp_summary_", Sys.Date(),".pdf"), g)
 
 # apply L2 filter to remove plate edge effect row-wise ----
 threedays <- ddply(threedays, c("exp.id"), transform, 
-            filt.value = l2filter.sparse(value_db, 2))
+            filt.value = l2filter.sparse(value, 2))
 
 # lets look at data after filtering ----
 ggplot(threedays, aes(x = factor(signif(doses, 2)), y = filt.value, fill = treatment)) +
@@ -85,7 +101,7 @@ ggplot(threedays, aes(x = factor(signif(doses, 2)), y = filt.value, fill = treat
   theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5))
 
 threedays <- ddply(threedays, c("rowname", "exp.id"), transform, 
-            normvalue = value_db/mean(filt.value, na.rm=TRUE))
+            normvalue = value/mean(filt.value, na.rm=TRUE))
 
 # lets look at data after adjusting ----
 ggplot(threedays, aes(x = factor(signif(doses, 2)), y = normvalue, fill = treatment)) +
