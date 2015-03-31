@@ -27,9 +27,6 @@ df %<>% filter(time==72)
 # boxplots from each experiment -- are readouts similar  ----
 qplot(x = factor(exp.id), y = value, data=df, geom = "boxplot") 
 
-# lets work on with 72 hour datapoint ----
-threedays <- df #[df$time==72,]
-
 # ok, let's check if different experiments values differ
 # fits <- dlply(threedays, c("Instrument"), 
 #               function(x) lm(value~factor(exp.id), data = x))
@@ -38,17 +35,9 @@ df %>%
   lm(value~factor(exp.id), data = .) %>%
   anova
 
-# plot data at 72 hour timepoint
-# qplot(x = factor(exp.id), y = value, data=threedays, geom = "boxplot") + 
-#   facet_grid(Instrument~time, scales = "free_y")
-
-# lets detrend data then -----
-# threedays <- ddply(threedays, "Instrument", 
-#                    transform, value_db = detrend(value, exp.id))
-
 df %>%
   group_by(exp.id) %>%
-  mutate(value=scale(value)%>%c) %>%
+  mutate(value=scale(value)%>%c) %T>%
   qplot(x = factor(exp.id), y = value, data=., geom = "boxplot") %>% 
   lm(value~factor(exp.id), data = .) %>%
   anova
@@ -61,79 +50,32 @@ df %>%
     stat_summary(fun.data = mean_se, geom = "pointrange") +
     stat_summary(fun.y = mean, geom = c("line","point"))
 
-
-Mysummary <- threedays %>%
-  group_by(exp.id) %>%
-  mutate(value=scale(value)%>%c) %>%
-  ddply(., c("doses", "treatment", "celldensity"), 
-                 summarise,
-                 Mean = mean(value),
-                 SD = sd(value),
-                 N = length(value),
-                 SE = SD/sqrt(N))
-
-q <- ggplot(Mysummary%>%filter(celldensity==1600), aes(x = log10(doses), y = Mean, shape = treatment)) +
-  geom_point(size = 3) + facet_grid(~celldensity, scales = "free_y") + 
-  geom_line(size = 1) +
-  geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width=0.2) + 
-  ylab(expression(Mean %+-% SE))
-ggsave(file=paste0("graphs/Asnc_cellgrowth_exp_summary_raw_", Sys.Date(),".pdf"), q)
-# 
-
-p <- ggplot(threedays, aes(x = factor(signif(doses, 2)), y = value_db, fill = treatment)) +
-  geom_boxplot() + facet_wrap(~Instrument, scales = "free_y") + 
-  theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5))
-
-library(gridExtra)
-g <- arrangeGrob(p, q, ncol=1)
-ggsave(file=paste0("graphs/Asnc_cellgrowth_exp_summary_", Sys.Date(),".pdf"), g)
-
-# tegelikult peaks arvutama reakeskmised ja nende pealt see reafunktsioon ----
-
-
 # apply L2 filter to remove plate edge effect row-wise ----
-threedays <- ddply(threedays, c("exp.id"), transform, 
-            filt.value = l2filter.sparse(value, 2))
+df %>% filter(treatment=="FUM") %>% select(doses) %>% unique
+df %>% filter(treatment=="rhIgG-Fc") %>% select(doses) %>% unique
 
-# lets look at data after filtering ----
-ggplot(threedays, aes(x = factor(signif(doses, 2)), y = filt.value, fill = treatment)) +
-  geom_boxplot() + facet_wrap(~Instrument, scales = "free_y") + 
-  theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5))
-
-threedays <- ddply(threedays, c("rowname", "exp.id"), transform, 
-            normvalue = value/mean(filt.value, na.rm=TRUE))
-
-# lets look at data after adjusting ----
-ggplot(threedays, aes(x = factor(signif(doses, 2)), y = normvalue, fill = treatment)) +
-  geom_boxplot() + facet_wrap(~Instrument, scales = "free_y") + 
-  theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5))
-
-# df$normvalue <- scale(df$normvalue, center=FALSE)
-#qplot(x = rowname, y = normvalue, geom = 'boxplot', data = threedays) + facet_grid(Instrument~time, scales = "free_y")
-# qplot(x = colname, y = normvalue, geom = 'boxplot', data = threedays) + facet_grid(Instrument~time, scales = 'free_y')
-
-
-summary2 <- ddply(threedays, c("doses","treatment", "Instrument"), 
-                  summarize,
-                  Mean = mean(normvalue),
-                  SD = sd(normvalue),
-                  N = length(normvalue),
-                  SE = SD/sqrt(N))
-
-ggplot(summary2, aes(x = log10(doses), y = Mean, colour = treatment)) +
-  geom_point(size = 3) + 
-  facet_wrap(~Instrument, scales = "free_y") + 
-  geom_line(size = 1) +
-  geom_errorbar(aes(ymin = Mean - SE, ymax = Mean + SE), width=0.2) + 
-  ylab(expression(Mean %+-% SE))
-ggsave(paste0("graphs/Asnc_cellgrowth_norm", Sys.Date(),".pdf"))
-
-# ggplot(threedays, aes(x = factor(signif(doses, 2)), y = normvalue, colour = treatment)) +
-#   geom_point(size = 3) + stat_smooth(aes(group = treatment), method="lm", size = 1) +
-#   facet_wrap(~Instrument)
-# ggsave(paste0("graphs/filtered_data_lm-smooth", exp.date,".pdf"))
-# 
-# # fit function to data ----
-# fits <- dlply(df, c("time","treatment", "Instrument"), function(x) lm(normvalue~doses, data = x))
-# lapply(fits, summary)
-# lapply(fits, anova)
+df %>%
+  filter(!exp.id=="140512") %>%
+  group_by(exp.id) %>% 
+  filter(!treatment=="media") %>%
+  group_by(exp.id) %>% 
+  mutate(value = (value-min(value))/(range(value)%>%diff)) %>% {
+    fumctrl <- filter(.,treatment=="rhIgG-Fc"&doses%in%c(1.28000e-08,4.01000e-08)) %>%
+      mutate(doses=2.01e-08)
+    rbind(.,fumctrl)
+  } %>%
+  group_by(exp.id,doses) %>%
+  mutate(value = value/median(value[treatment=="rhIgG-Fc"], na.rm = TRUE)) %>%
+  filter(!(treatment=="rhIgG-Fc"&doses==2.01e-08)) %>%
+  filter(!(doses==1.60001e-05|treatment=="UT")) %>%
+  mutate(treatment = factor(treatment,c("rhIgG-Fc","3MUT-Fc","FUM"))) %>%
+  ggplot(aes(x = log10(doses), y = value, shape = treatment)) +
+  stat_summary(fun.data = mean_se, geom = "pointrange") +
+  stat_summary(fun.y = mean, geom = "point", size=3) +
+  stat_summary(fun.y = mean, geom = "line") +
+  scale_y_continuous(expand = c(0, 0)) +
+  expand_limits(y = 0) + 
+  theme_classic() +
+  theme(legend.justification=c(1,0), legend.position=c(1,0), legend.title=element_blank()) +
+  ylab("Relative cell number") +
+  xlab(bquote(list(Conc.,log[10](M))))
