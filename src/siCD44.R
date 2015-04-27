@@ -10,7 +10,7 @@ df.sirna <- datalist.orig[names(datalist.orig)%in%c("141008","141022")] %>%
   rbindlist
 
 # add instrument types, add row and column names ----
-df <- df.sirna %>% 
+df.sirna %<>% 
   mutate(Instrument=ifelse(grepl("IVIS",exp.id),"IVIS","Tecan"),
          rowname=sub("([A-P]{1})([0-9]*)","\\1",well),
          colname=sub("([A-P]{1})([0-9]*)","\\2",well),
@@ -18,11 +18,12 @@ df <- df.sirna %>%
          GF=factor(GF,levels=c("bFGF","VEGF", "GDF-2", "FBS_20","FBS_5"), 
                    labels=c("bFGF","VEGF", "GDF-2", "20%FBS","5%FBS")))
 
-
-
-
 library(scales)
-df <- df %>% 
+df <- df.sirna %>%
+  filter(!(GF=="5%FBS"&treatment=="siCD44")) %>%
+  group_by(exp.id) %>%
+  mutate(value=value-mean(value[GF=="5%FBS"])) %>%
+  filter(!GF=="5%FBS") %>%
   group_by(exp.id,GF) %>% 
   mutate(value = rescale(value))
 
@@ -40,6 +41,9 @@ zfactor <- function(data,treated,untreated){
 #   do(zfactor(.,treated=c("siCD44"),untreated=c("UT","siSCR","siVIM")))
 
 df %>%
+  filter(!(GF=="5%FBS"&treatment=="siCD44")) %>%
+  group_by(exp.id) %>%
+  mutate(value=value-mean(value[GF=="5%FBS"])) %>%
   ggplot(aes(x=value)) + 
   geom_histogram() +
   facet_grid(GF~exp.id,scales="free")
@@ -128,16 +132,11 @@ g_legend<-function(a.gplot){
 
 plotlist <- df %>% 
   dlply(., "GF", function(x) plotlittlelesstuff.mod(x, "Tecan"))
-legend<-g_legend(plotlist[[1]])
-p <- arrangeGrob(arrangeGrob(arrangeGrob(plotlist$bFGF + theme(legend.position="none"),
+legend <- g_legend(plotlist[[1]])
+p <- arrangeGrob(arrangeGrob(plotlist$bFGF + theme(legend.position="none"),
                                          plotlist$VEGF + theme(legend.position="none"),
                                          plotlist$"20%FBS",
-                                         plotlist$"5%FBS") ,
-                             legend, ncol=2, widths=c(8,2)),
-                 arrangeGrob(rectGrob(gp=gpar(col="white")),
-                             plotlist$"GDF-2",
-                             rectGrob(gp=gpar(col="white")), 
-                             ncol=3, widths=c(1,4,1)),
-                 nrow=2, heights=c(2,1))
+                                         plotlist$"GDF-2" + theme(legend.position="none")) ,
+                             legend, ncol=2, widths=c(8,2))
 p
 # ggsave(file = paste0("graphs/Sync_siRNA_raw_Tecan_", Sys.Date(),".png"), p, width = 6)
